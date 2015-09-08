@@ -1,0 +1,404 @@
+#include "JevpPlotSet.h"
+#include <TCanvas.h>
+#include <rtsLog.h>
+#include <TPDF.h>
+#include <TMessage.h>
+#include "StJevpPool/StJevpServer/EvpMessage.h"
+#include "StJevpPool/StJevpServer/EvpConstants.h"
+#include <StPDFUtilities/PdfIndex.hh>
+#include <unistd.h>
+#include <sys/stat.h>
+
+JevpPlotSet::JevpPlotSet()
+{
+  diska = NULL;
+  daqfile = NULL;
+  server = "evp.starp.bnl.gov";
+  serverport = EVP_PORT;
+  pdf = NULL;
+  loglevel = NULL;
+  socket = NULL;
+  current_run = -1;
+  update_time = 5;
+}
+
+int JevpPlotSet::addPlot(JevpPlot *hist)
+{
+  plots.Add(hist);
+  return 0;
+}
+
+JevpPlot *JevpPlotSet::getPlot(char *name)
+{
+  JevpPlot *curr = (JevpPlot *)plots.First();
+
+  while(curr) {
+    if(strcmp(curr->GetPlotName(), name) == 0) {
+      return curr;
+    }
+
+    curr = (JevpPlot *)plots.After(curr);
+  }
+
+  return NULL;
+}
+
+void JevpPlotSet::removePlot(char *name)
+{
+  JevpPlot *curr = (JevpPlot *)plots.First();
+
+  while(curr) {
+    if(strcmp(curr->GetPlotName(), name) == 0) {
+      plots.Remove(curr);
+      return;
+    }
+    curr = (JevpPlot *)plots.After(curr);
+  }
+
+  return;
+}
+
+int JevpPlotSet::getNumberOfPlots()
+{
+  int i=0;
+
+  JevpPlot *curr = (JevpPlot *)plots.First();
+
+  while(curr) {
+    i++;
+    curr = (JevpPlot *)plots.After(curr);
+  }
+
+  return i;
+  
+}
+
+JevpPlot *JevpPlotSet::getPlotByIndex(int i)
+{
+  int idx=0;
+
+  JevpPlot *curr = (JevpPlot *)plots.First();
+
+  while(curr) {
+    if(i == idx) return curr;
+    idx++;
+    curr = (JevpPlot *)plots.After(curr);
+  }
+
+  return NULL;
+}
+
+void JevpPlotSet::dump()
+{
+  JevpPlot *curr = (JevpPlot *)plots.First();
+
+  int i=0;
+  while(curr) {
+    printf("hist[%d] = %s\n",i,curr->GetPlotName());
+    i++;
+    curr = (JevpPlot *)plots.After(curr);
+  }
+}
+
+void JevpPlotSet::initialize(int argc, char *argv[])
+{
+}
+
+void JevpPlotSet::startrun(daqReader *rdr)
+{
+}
+
+// This calls stoprun...
+void JevpPlotSet::_stoprun(daqReader *rdr)  
+{
+  stoprun(rdr);   // perform user actions first...
+  
+  updatePlots();  // make sure plots are ready to go...
+
+  if(server) {
+    printf("Sending stoprun\n");
+    EvpMessage msg;
+    msg.setCmd("stoprun");
+    char args[14];
+    sprintf(args, "%d", rdr->run);
+    msg.setArgs(args);
+    send(&msg);
+  }
+}
+
+void JevpPlotSet::stoprun(daqReader *rdr)
+{
+}
+
+void JevpPlotSet::event(daqReader *rdr)
+{
+}
+void JevpPlotSet::ntuple(daqReader *rdr)
+{
+}
+
+int JevpPlotSet::selectEvent(daqReader *rdr)
+{
+  return 1;
+}
+
+int JevpPlotSet::selectRun(daqReader *rdr)
+{
+  return 1;
+}
+
+void JevpPlotSet::Main(int argc, char *argv[])
+{
+  static unsigned int last_update = 0;
+
+  if(parseArgs(argc, argv) < 0) {
+    return;
+  }
+
+  struct stat64 st;
+  if(stat64(daqfile,&st) == 0)
+  {
+	  printf("%s exist.\n",daqfile);
+  }
+  else
+  {
+          printf("%s deos not exist. skipping .\n",daqfile);
+	  return ;
+  }
+
+  rtsLogOutput(RTS_LOG_STDERR);
+  rtsLogLevel(WARN);
+
+  // initialize reader...
+  reader = new daqReader(daqfile);
+  if(diska) reader->setEvpDisk(diska);
+  if(loglevel) rtsLogLevel(loglevel);
+  if(server) connect(server, serverport);
+  
+
+  // initialize client...
+  initialize(argc, argv);
+
+  for(;;) {
+
+    // Lets update the options for the get call eh?
+    char *ret = reader->get(0,EVP_TYPE_ANY);
+    
+    unsigned int tm = time(NULL);
+    if(tm > (last_update + update_time)) {
+      if(socket) {
+	LOG(WARN, "Updating plots...");
+	updatePlots();
+	last_update = tm;
+      }
+    }
+
+    if(ret == NULL) {  // all kinds of burps...
+      switch(reader->status) {
+
+      case EVP_STAT_OK:  
+	LOG(DBG, "EVP_STAT_OK");
+	continue;
+
+      case EVP_STAT_EOR:
+	LOG(DBG, "EVP_STAT_EOR");
+
+	_stoprun(reader);
+
+	if(reader->IsEvp()) {
+	  LOG(DBG, "End of Run... [previous run=%d, current run=%d]",current_run, reader->run);
+
+	  sleep(1);
+	  continue;
+	}
+	else {
+	//  if(pdf) writePdfFile(); // Finish and exit...
+	  return;
+	}
+      case EVP_STAT_EVT:
+	LOG(WARN, "Problem reading event... skipping");
+	sleep(1);
+	continue;
+      case EVP_STAT_CRIT:
+	LOG(CRIT, "Critical problem reading event... exiting");
+	return;
+      }
+    }
+
+    if(reader->run != current_run) {
+      LOG(WARN, "Got an event: current run=%d event's run=%d\n",current_run, reader->run);
+      current_run = reader->run;
+      startrun(reader);
+    }
+
+    if(!selectRun(reader)) continue;
+    if(!selectEvent(reader)) continue;
+    event(reader);
+    ntuple(reader) ;
+  }
+}
+
+
+// Private functions...
+
+int JevpPlotSet::parseArgs(int argc, char *argv[])
+{
+  for(int i=1;i<argc;i++) {
+    if(memcmp(argv[i], "-diska", 6) == 0) {
+      i++;
+      diska = argv[i];
+    }
+    else if (memcmp(argv[i], "-file", 5) == 0) {
+      i++;
+      daqfile = argv[i];
+    }
+    else if (memcmp(argv[i], "-noserver", 9) == 0) {
+      server = NULL;
+    }
+    else if (memcmp(argv[i], "-server", 7) == 0) {
+      i++;
+      server = argv[i];
+    }
+    else if (memcmp(argv[i], "-port", 5) == 0) {
+      i++;
+      serverport = atoi(argv[i]);
+    }
+    else if (memcmp(argv[i], "-pdf", 4) == 0) {
+      i++;
+      pdf = argv[i];
+    }
+    else if (memcmp(argv[i], "-loglevel", 9) == 0) {
+      i++;
+      loglevel = argv[i];
+    }
+    else {
+      printf("No arg #%d = %s\n",i,argv[i]);
+      printf("%s arguments\n\t-diska diskapath\n\t-file filename\n\t-noserver\n\t-server servername\n\t-port port\n\t-pdf pdffilename\n\t-loglevel level\n",argv[0]);
+      return -1;
+    }    
+  }
+  return 0;
+}
+
+int JevpPlotSet::updatePlots()
+{
+  if(!server) return 0;
+
+  JevpPlot *curr = (JevpPlot *)plots.First();
+
+  while(curr) {
+    send(curr);
+    curr = (JevpPlot *)plots.After(curr);
+  }
+
+  return 0;
+}
+/*
+void JevpPlotSet::writePdfFile()
+{
+  printf("writing pdf\n");
+
+  PdfIndex index;
+  int page = 1;
+
+  TCanvas canvas("c1");
+  
+  JevpPlot *curr = (JevpPlot *)plots.First();
+
+  char firstname[256];
+  char lastname[256];
+
+  strcpy(firstname, pdf);
+  strcat(firstname, "(");
+  strcpy(lastname, pdf);
+  strcat(lastname, ")");
+
+  while(curr) {  
+    index.add(NULL,curr->GetPlotName(),page++,0);
+    
+    curr->draw();
+
+    if(plots.Before(curr) == NULL) {
+      canvas.Print(firstname,"pdf,Portrait");
+    }
+    else if (plots.After(curr) == NULL) {
+      canvas.Print(lastname,"pdf,Portrait");
+    }
+    else {
+      canvas.Print(pdf,"pdf,Portrait");
+    }
+
+    curr = (JevpPlot *)plots.After(curr);
+  }
+
+  printf("%s %s %s\n",firstname,pdf,lastname);
+
+  index.CreateIndexedFile(pdf,pdf);
+
+  return;
+  }*/
+
+void JevpPlotSet::writePdfFile()
+{
+	printf("writing pdf\n");
+
+	PdfIndex index;
+	int page = 1;
+
+	TCanvas c1("c1","canvas",600,800);
+
+	JevpPlot *curr = (JevpPlot *)plots.First();
+
+	char firstname[256];
+	char lastname[256];
+
+	strcpy(firstname, pdf);
+	strcat(firstname, "(");
+	strcpy(lastname, pdf);
+	strcat(lastname, ")");
+
+	TPDF *pdfFile = new TPDF(pdf,111);
+
+	int i=0;
+
+	while (i<plots.GetEntries()) {
+		c1.Divide(2,3);
+		for (int j=1; j<7; j++) {
+			if (i>=plots.GetEntries()) break;
+			c1.cd(j);
+			curr = (JevpPlot *) plots.At(i);
+			if (curr) curr->draw(); i++;
+		}
+		c1.cd(); c1.Update();
+		pdfFile->NewPage();
+	}
+	pdfFile->Close();
+
+
+	if (pdfFile) delete pdfFile; 
+
+	return;
+
+
+}
+
+int JevpPlotSet::connect(char *host, int port) {
+  socket = new TSocket(host,port);
+  if(socket->IsValid()) {
+    return 0;
+  }
+  else {
+    socket->NetError("connect: ",socket->GetErrorCode());
+    delete socket;
+    socket = NULL;
+    return -1;
+  }
+}  
+
+int JevpPlotSet::send(TObject *msg) {
+  TMessage mess(kMESS_OBJECT);
+  
+  mess.WriteObject(msg);
+  socket->Send(mess);
+  return 0;
+}

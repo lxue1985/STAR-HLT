@@ -1,0 +1,157 @@
+# common definitions for RTS-related makefiles
+# works only with GNU make!
+
+# where are we executing: SunOS or Linux (ONLY!)
+export HOST_SYSTEM := $(shell uname)
+# useful for Linux
+export HOST_CPU := $(shell uname -m)
+export TARGET_CPU := $(HOST_CPU)
+ifndef RTS_PROJECT
+export RTS_PROJECT := STAR
+endif
+export TARGET_SYSTEM := LINUX
+export PROJDIR := /RTScache
+export RTS_DAQMAN_FLAGS := -DRTS_DAQMAN=\"${RTS_DAQMAN}\"
+
+RTS_TYPE := RTS_PROJECT_STAR
+
+
+export RTS_DEV_PREFIX := pro_
+
+
+
+
+
+
+
+
+
+# jml 12/08 : stupid event tracker is in wrong location,
+# need an override for base path
+
+
+
+INCLUDES =  -I. -I.. -I$(RTS_DIR_PATH)/include -I$(RTS_DIR_PATH)/trg/include -I$(RTS_DIR_PATH)/src
+
+# List misc. defaults assuming the target system is the
+# same as the local system. Can be overriden later.
+
+# ROOTCFLAGS    = $(shell root-config --cflags)
+ROOTLIBS      = $(shell root-config --libs)
+# ROOTGLIBS     = $(shell root-config --glibs)
+
+INCFLAGS = -I$(ROOTSYS)/include
+LDFLAGS = -L$(ROOTSYS)/lib
+FLAGS = -lpthread -lrt -Wall -g $(INCFLAGS) $(LDFLAGS)
+
+
+
+
+export CC := gcc
+export CXX := g++ 
+
+
+#CUDAHOME    :=/home/sunxm/cuda/mycuda
+CUDAHOME    :=/usr/local/cuda
+
+NVCC       := /usr/local/cuda/bin/nvcc 
+NVCCFLAG       := --compiler-options -fno-strict-aliasing -I. -I/usr/local/cuda/include -arch sm_11
+NVCCFLAG    +=-I$(CUDAHOME)/sdk/common/inc
+NVCCFLAG    +=-DUNIX -O3
+
+NVCCLINK := g++ -fPIC 
+NVCCLINKFLAG :=-L/usr/local/cuda/lib 
+NVCCLINKFLAG +=-L$(CUDAHOME)/sdk/lib
+NVCCLINKFLAG +=-L$(CUDAHOME)/sdk/common/lib/linux -lcudart
+NVCCLINKFLAG +=-L/usr/local/cuda/lib
+NVCCLINKFLAG +=-L$(CUDAHOME)/sdk/lib
+#NVCCLINKFLAG +=-L$(CUDAHOME)/sdk/common/lib/linux -lcutil
+NVCCLINKFLAG +=-L$(CUDAHOME)/sdk/common/lib/linux 
+
+
+
+
+
+
+# by now we know the host system as well as the target
+INSTALL_SUFFIX :=
+
+HOSTFLAGS = -march=$(TARGET_CPU)
+
+
+# any library used on the host i.e. -lsocket or such
+
+ifeq (${TARGET_SYSTEM},LINUX)
+
+		HOSTFLAGS += 
+		HOSTLIBS := -lpthread 
+
+	HOSTDEFINES := 
+	HOSTINCLUDES :=
+	INSTALL_SUFFIX := $(TARGET_SYSTEM)/$(HOST_CPU)
+
+endif
+
+
+
+
+
+
+
+
+
+# setup endianness  RTS_LITTLE_ENDIAN / RTS_BIG_ENDIAN...
+# endianness soley upon cpu...
+# This list also shows the currently supported CPUs!
+	HOSTDEFINES += -DRTS_LITTLE_ENDIAN
+
+
+export LIBDIR = $(PROJDIR)/$(RTS_DEV_PREFIX)lib/${INSTALL_SUFFIX}
+export BINDIR = $(PROJDIR)/$(RTS_DEV_PREFIX)bin/${INSTALL_SUFFIX}
+
+# finelize standard variables...
+INCLUDES += ${HOSTINCLUDES} 
+
+DEFINES = -D_REENTRANT ${RTS_DAQMAN_FLAGS} -DTARGET_SYSTEM=\"${TARGET_SYSTEM}\" -DPROJDIR=\"${PROJDIR}\"  -DINSTALL_SUFFIX=\"${INSTALL_SUFFIX}\" -D${RTS_TYPE} ${HOW} ${HOSTDEFINES}
+
+
+CCFLAGS = -O3 -Wall -pipe -fverbose-asm ${HOSTFLAGS} ${DEFINES} ${INCLUDES}
+CXXFLAGS = ${CCFLAGS}
+CFLAGS = ${CCFLAGS}
+
+# makes sense only for local system
+	export LDLIBS = -L${LIBDIR} -lrtsComLib -lsunRT  -lrtsCfgLib -lrtslog -lsfs  ${HOSTLIBS}	
+
+
+# noticed problems on Linux where the default linker gcc doesn't work well for g++ compiled
+# files
+LINK.o = $(NVCCLINK) $(FLAGS) $(ROOTLIBS) $(LDFLAGS) 
+
+# misc. executables
+export MAKEDEPEND = makedepend -Y -w7 -- ${CXXFLAGS} -- *.cxx *.C *.h *.c *.hh 2>rts.makedepend.err
+export INSTALL:=$(RTS_DIR_PATH)/../../online/RTS/src/SH_UTIL/install.sh
+export CLEAN := rm -f rts.makedepend.err err out *.o *.a *.so *.bak *~ #* 
+
+#added stuff so that we can compile .cxx
+SUFFIXES += .cxx .hh
+.SUFFIXES += .cxx .hh
+
+%.hh:
+
+%.cxx:
+
+# %: %.cxx
+	# $(LINK.C) $^ $(LOADLIBES) $(LDLIBS) -o  $@
+
+%.o: %.cxx
+#  commands to execute (built-in):
+	$(COMPILE.C)  $<
+
+%.cu_o : %.cu 
+	$(NVCC) $(NVCCFLAG) -o $@ -c $<
+
+############ NEW boilerplate ##################
+RTS_AR = ar -rucvs $@ $?
+
+.PHONY: say libs clean depend install all subdirs update $(VPATH)
+

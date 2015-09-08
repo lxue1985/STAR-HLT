@@ -1,0 +1,86 @@
+trigger settings:
+  triggerOnHighPt     1
+  triggerOnDiElectron     1
+  triggerOnHeavyFragment     1
+  triggerOnAllEvents    0
+  triggerOnRandomEvents    1
+  
+  triggerBitHighPt     0x10000
+  triggerBitDiElectron     0x20000
+  triggerBitHeavyFragment     0x40000
+  triggerBitAllEvents    0x80000
+  triggerBitRandomEvents    0x100000
+
+high pt trigger parameters:
+   nHitsCut_highPt     20
+   ptCut_highPt     7.5
+   
+diElectron trigger parameters:
+   nHitsCut_diElectron     15
+   nDedxCut_diElectron     10
+   towerEnergyCut_diElectron     0.5
+   pCutLowForTof_diElectron      0.3
+   pCutHighForTof_diElectron     1.e10
+   pCutLowForEmc_diElectron     1.5
+   pCutHighForEmc_diElectron     1.e10
+   pCutLowForTofAndEmc_diElectron      0.3
+   pCutHighForTofAndEmc_diElectron     1.e10
+   nSigmaDedxCutLowForTof_diElectron     -0.3
+   nSigmaDedxCutHighForTof_diElectron     3.
+   nSigmaDedxCutLowForEmc_diElectron     -1.
+   nSigmaDedxCutHighForEmc_diElectron     3.
+   nSigmaDedxCutLowForTofAndEmc_diElectron     -1.
+   nSigmaDedxCutHighForTofAndEmc_diElectron     3.
+   p1Cut_diElectron     1.4
+   p2Cut_diElectron     1.2
+   pOverECutLow_diElectron     0.3
+   pOverECutHigh_diElectron     1.5
+   invariantMassCutLow_diElectron     0.
+   invariantMassCutHigh_diElectron     1.e6
+   vertexZDiffCut_diElectron     10.
+   oneOverBetaCut_diElectron    0.1
+   onlyOppPairs_diElectron     0
+
+heavyFragment trigger parameters:
+   nHitsCut_heavyFragment     15
+   nDedxCut_heavyFragment     10
+   nSigmaDedxHe3Cut_heavyFragment     -3.
+   nSigmaDedxTritonCut_heavyFragment     0.
+   nSigmaMassTritonCut_heavyFragment     0.
+   dcaCut_heavyFragment      3.
+
+QA settings:
+  Debug_allTracks     0
+  Debug_tracks     0
+  Debug_towers     0
+  Debug_matchs     0
+  Debug_vertex     0
+
+QA parameters:
+  nHitsCut_debug     10
+  nDedxCut_debug     0
+  dedxCutLow_debug     0.e-6
+  dedxCutHigh_debug     1.
+  pCut_debug     0.
+  towerEnergyCut_debug     0.5
+  matchPhiDiffCut_debug     0.2
+  matchZEdgeCut_debug     10
+
+Dedx parameters:
+  innerSectorGain     2.0839791e-08
+  outerSectorGain     3.8933310e-08
+  sigmaDedx1          0.3736
+
+Space charge parameters:
+  spaceChargeP0     0.
+  spaceChargeP1     0.
+  scalerToUse       1
+
+  dPOverP2          0.02
+  sigmaTof          0.1
+  
+matchAllTOF   0
+matchAllEMC   0
+
+updateBeamline    50
+updatedEdxGain    1.e+04

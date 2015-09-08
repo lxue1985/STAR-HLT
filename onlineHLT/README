@@ -1,0 +1,27 @@
+These codes are for STAR online tracking and high level trigger (HLT).
+
+The codes can be found at 
+online/RTS/src/HLT
+
+online_tracking_sector is the class which do tracking . the input of this class is:
+Magnetic field: default -0.5
+sector ID: 0-23;
+TPC hits: a (tpc_t *) pointer
+the output of this class is L3 tracks put at data buffer: (char *)sectp, int size.  size is the Byte number of track data buffer.
+
+online_tracking_collector is a class collecting all track information from the output of online_tracking_sector, and making trigger decisions.
+the input of this class is:
+L3 tracks data buffer: (char *)sectp.  sectp is the output of online_tracking_sector.
+EMC information: obtained through a daqReader* pointer rdr
+the output is obtained by calling ->triggerDecider->decide(), which return a integer with trigger bits.
+
+For now the code does full tracking. To track with EMC towers as seeds, comment out the line below "full tracking" and uncomment the line below "tracking with BTOW as seeds".
+
+server_client is an example to run the codes with offline Run8 dAu data.
+Line 386~390 show how to create the classes.
+Line 505~558 show how to do event loop.
+
+To run it 
+go to 
+online/RTS/src/HLT
+./server_client /directory/file.daq
